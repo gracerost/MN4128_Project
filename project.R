@@ -48,5 +48,18 @@ head(population)
 long_gdp <- reshape(gdp, idvar="Country.Code", varying= list(5:69), timevar="year", times= names(gdp)[5:69], direction="long")
 long_gdp <- rename(long_gdp, "GDP"="1960")
 
+#reshape the population dataset to long format
 long_pop <- reshape(population, idvar="Country.Code", varying= list(5:71), timevar="year", times= names(population)[5:71], direction="long")
 long_pop <- rename(long_pop, "Population"="1960")
+
+#merge the datasets - this should drop the years 2025 and 2026
+gdp_pop <- merge(long_gdp, long_pop, by=c("Country.Code", "Country.Name", "year"))
+
+table(gdp_pop$year)
+
+gdp_pop <- gdp_pop %>%
+  mutate(
+    gdp_per_cap = as.numeric(GDP)/as.numeric(Population)
+    )
+
+head(gdp_pop)
