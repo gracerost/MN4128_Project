@@ -9,10 +9,12 @@ library(tidyverse)
 library(rio)
 library(foreign)
 library(haven)
+library(readxl)
+library(countrycode)
 
 
 ################################################
-# First task will be creating a dataset that displays the country, year, GDP, Population, and GDP per Capita
+# First task will be creating a dataset that displays the country, games, and medals won
 
 #read in the GDP dataset
 gdp <- read.csv("gdp_data.csv", header=TRUE, sep=",")
@@ -65,10 +67,51 @@ gdp_pop <- filter(gdp_pop, Type=="Country")
 #read in the olympic athlete dataset
 athletes <- read.csv("athlete_events.csv", header=TRUE, sep=",")
 
-#table(athletes$)
-# countries <- read.csv("olympics_medals_country_wise.csv", header=TRUE, sep=",")
-
 #create a new dataset that only includes medalists
 medalists <- filter(athletes, !is.na(Medal))
 
-#
+#group the medalists by year, team, event, and medal, and count the number of medals earned in event per year
+medalists <- medalists %>%
+  group_by(NOC, Games, Event, Medal) %>%
+  mutate(
+    number_of_repeats = n()
+  ) %>%
+  ungroup()
+
+#add a new variable event_type that records if the event is individual or team
+medalists$event_type <- ifelse(medalists$number_of_repeats == 1, "individual", "team")
+
+#create a new dataset that displays the country medals by year
+country_medals <- medalists %>%
+  group_by(NOC, Games, Event, Medal) %>%
+  slice(1) %>% #only keep one row per event
+  ungroup()%>%
+  group_by(NOC, Games, Year)%>%
+  summarise(
+    num_gold = sum(Medal == "Gold", na.rm = TRUE),
+    num_silver = sum(Medal == "Silver", na.rm = TRUE),
+    num_bronze = sum(Medal == "Bronze", na.rm = TRUE),
+    total_medals = n(),
+    .groups = "drop"
+  )
+
+
+##################################################
+#Combine the country_medals dataset with the gdp_pop dataset
+
+#match the gdp country codes to ioc codes
+gdp_pop$NOC <- countrycode(gdp_pop$Country.Code, origin = "wb", destination = "ioc", warn=TRUE, nomatch="no match")
+
+#check the observations without a match in wb/ioc
+nomatch <- filter(gdp_pop, NOC == "no match")
+table(nomatch$Country.Name)
+
+#confirm that nomatches are not in medal dataset
+nomatch_medals <- merge(nomatch, country_medals, by.x = c("NOC"))
+
+#gdp_medals contains the country's medals by year and their economic info
+gdp_medals <- merge(country_medals, gdp_pop, by.x = c("NOC", "Year"), by.y = c("NOC", "year"))
+
+
+
+
