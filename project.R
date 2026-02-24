@@ -11,7 +11,16 @@ library(foreign)
 library(haven)
 library(readxl)
 library(countrycode)
+library(stargazer)
 
+# prevent the output to be displayed in scientific notation
+options(scipen=999)
+
+# Prevent R from truncating output 
+options(dplyr.width = Inf)
+
+#  clear out R environment ?
+rm(list=ls())
 
 ################################################
 # First task will be creating a dataset that displays the country, games, and medals won
@@ -112,6 +121,14 @@ nomatch_medals <- merge(nomatch, country_medals, by.x = c("NOC"))
 #gdp_medals contains the country's medals by year and their economic info
 gdp_medals <- merge(country_medals, gdp_pop, by.x = c("NOC", "Year"), by.y = c("NOC", "year"))
 
+gdp_medals$GDP <- as.numeric(gdp_medals$GDP)/1000000
 
+medal_2008 <- filter(gdp_medals, Year == 2008)
 
+gdp_medal_mod <- lm(num_gold ~ GDP, data = medal_2008)
+stargazer(gdp_medal_mod, type="text")
 
+p1 <- ggplot(medal_2008, aes(x = GDP, y = num_gold))+
+  geom_point()
+
+p1
