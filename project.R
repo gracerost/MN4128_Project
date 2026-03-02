@@ -12,6 +12,8 @@ library(haven)
 library(readxl)
 library(countrycode)
 library(stargazer)
+library(plotly)
+library(htmlwidgets)
 
 # prevent the output to be displayed in scientific notation
 options(scipen=999)
@@ -121,14 +123,113 @@ nomatch_medals <- merge(nomatch, country_medals, by.x = c("NOC"))
 #gdp_medals contains the country's medals by year and their economic info
 gdp_medals <- merge(country_medals, gdp_pop, by.x = c("NOC", "Year"), by.y = c("NOC", "year"))
 
-gdp_medals$GDP <- as.numeric(gdp_medals$GDP)/1000000
+gdp_medals$GDP <- as.numeric(gdp_medals$GDP)/1000000000 #GDP is now in millions of USD
 
 medal_2008 <- filter(gdp_medals, Year == 2008)
 
 gdp_medal_mod <- lm(num_gold ~ GDP, data = medal_2008)
 stargazer(gdp_medal_mod, type="text")
 
-p1 <- ggplot(medal_2008, aes(x = GDP, y = num_gold))+
-  geom_point()
+p1 <- ggplot(medal_2008, aes(x = GDP, y = num_gold, text = NOC))+
+  geom_point()+
+  labs(title = "GDP vs Gold Medals for 2018",
+       x = "GDP (millions 2015 USD",
+       y = "Number of Gold Medals")
+  # stat_summary_bin(fun="mean", bins=100, size=2, geom="point")+
+  # stat_smooth(method="lm", se=FALSE)+
+  theme_minimal()
 
-p1
+#make an interactive plot for HTML
+p1_interactive <- ggplotly(p1, tooltip = "text")
+
+saveWidget(p1_interactive, "gdp_gold_interactive.html")
+
+#filter out countries over 5000 million GDP
+medal_smallgdp_2008 <-  filter(gdp_medals, GDP < 5000)
+
+gdp_medal_mod2 <- lm(num_gold ~ GDP, data = medal_smallgdp_2008)
+stargazer(gdp_medal_mod, type="text")
+
+p2 <- ggplot(medal_smallgdp_2008, aes(x = GDP, y = num_gold))+
+  stat_summary_bin(fun="mean", bins=100, size=2, geom="point")+
+  stat_smooth(method="lm", se=FALSE)+
+  theme_bw()
+
+p2
+
+##############################################
+# Making a group of binned charts for every 8 years
+# charts will take the average medal count and average gdp of each country over the period
+
+#filter the dataset to only include 1960 to 1968
+#gdp_medal_1960_to_1968 <- filter(gdp_medals, Year < 1972)
+
+#group by NOC and get an average of gdp and medals
+gdp_medal_1960_to_1968 <- filter(gdp_medals, Year < 1972) %>%
+  group_by(NOC)%>%
+  summarise(
+    avg_GDP = mean(GDP),
+    avg_medals = mean(total_medals)
+  )%>%
+  ungroup()
+
+p1960 <- ggplot(gdp_medal_1960_to_1968, aes(x = avg_GDP, y = avg_medals, text = NOC))+
+  geom_point()+
+  labs(title = "GDP vs Medals for 1960-1968",
+       x = "Average GDP (millions 2015 USD",
+       y = "Average Number of Medals")
+# stat_summary_bin(fun="mean", bins=100, size=2, geom="point")+
+# stat_smooth(method="lm", se=FALSE)+
+theme_minimal()
+
+p1960
+
+p1960_interactive <- ggplotly(p1960, tooltip = "text")
+
+p1960_interactive
+
+
+############################################################
+# Make a stacked bar chart that displays the percentage of medals won by the top 5 GDP countries
+
+#need to get a count of total medals for each year
+tot_medals_by_year <- gdp_medals %>%
+  group_by(Year)%>%
+  summarise(
+    tot_year_medals = sum(total_medals)
+  )%>%
+ungroup()
+
+top5_gdp_year <- gdp_medals %>%
+  group_by(Year)%>%
+  arrange(desc(GDP), .by_group = TRUE) %>%
+  slice_head(n=5) %>%
+  ungroup()
+
+top5_percent <- top5_gdp_year%>%
+ left_join(tot_medals_by_year, by = "Year") %>%
+  mutate(percent_medals = total_medals / tot_year_medals * 100)
+
+p_top5 <- ggplot(top5_percent, aes(x = Year, y = percent_medals, fill = NOC)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Percent of Medals Won by Top 5 GDP Countries Over Time",
+       x = "Year",
+       y = "Percent of Total Medals",
+       fill = "Country") +
+  scale_x_continuous(breaks = sort(unique(top5_percent$Year)))+
+  scale_y_continuous(breaks = seq(0, 100, by=5))+
+  annotate("text", x = 1980, y=17, label="Olympics\nBoycott", color="black", size = 4)+
+  # scale_fill_brewer(palette = "Set2")+
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_top5
+
+############################################################
+# Creating a line plot that displays the top and bottom group of medal winners by GDP
+
+#get the bottom group of medalists (tot_medals = 1)
+# bottom_medals_year <- gdp_medals %>%
+#   group_by(Year, NOC)%>%
+#   summarise()
+#   ungroup()
