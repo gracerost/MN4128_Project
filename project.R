@@ -1,4 +1,6 @@
-#MN4128 Project
+# This is a R file completed for the Final Project for MN4128
+# Author: Grace Rost and Dan Ecker
+# Date: 11 Feb 2026
 
 library(ggplot2)
 library(psych)
@@ -55,7 +57,7 @@ population <- filter(population, Country.Code != "")
 population <- rename_with(population, .fn = reformat_yearvar, .cols= contains("YR"))
 
 #reshape the gdp dataset to long format
-long_gdp <- reshape(gdp, idvar="Country.Code", varying= list(6:70), timevar="year", times= names(gdp)[5:69], direction="long")
+long_gdp <- reshape(gdp, idvar="Country.Code", varying= list(6:70), timevar="year", times= names(gdp)[6:70], direction="long")
 long_gdp <- rename(long_gdp, "GDP"="1960")
 
 #reshape the population dataset to long format
@@ -156,6 +158,10 @@ reg_table <- huxtable::as_flextable(huxreg)
 
 reg_table <- add_header_lines(reg_table, values="Table 1. Effect of GDP on Medal Count (1960-2016)")
 
+reg_table <- flextable::align(reg_table, align = "center")
+
+reg_table <- flextable::align(reg_table, align = "center", part = "header")
+
 reg_table
 
 # Show that population does not impact medal count
@@ -179,11 +185,23 @@ reg_table2 <- huxtable::as_flextable(huxreg2)
 
 reg_table2 <- add_header_lines(reg_table2, values="Table 2. Effect of Population on Medal Count (1960-2016)")
 
+reg_table2 <- flextable::align(reg_table2, align = "center")
+
+reg_table2 <- flextable::align(reg_table2, align = "center", part="header")
+
 reg_table2
 
 # save_as_docx(
 #   reg_table, reg_table2,
 #   path = "reg_tables.docx")
+
+#regress GDP per capita on l(total medals)
+modpercap <- lm(ltotal_medals ~ gdp_per_cap, data = gdp_medals)
+modpercap1 <- lm(lgold ~ gdp_per_cap, data = gdp_medals)
+modpercap2 <- lm(lsilver ~ gdp_per_cap, data = gdp_medals)
+modpercap3 <- lm(lbronze ~ gdp_per_cap, data = gdp_medals)
+
+stargazer(modpercap, modpercap1, modpercap2, modpercap3, type="text", digits=5)
 
 #create the equation for the log(totalmedals) ~ GDP relationship
 eq <- paste0(
@@ -195,9 +213,9 @@ eq <- paste0(
 p1 <- ggplot(gdp_medals, aes(x = GDP, y = ltotal_medals))+
   stat_summary_bin(fun="mean", bins=200, size=2, geom="point")+ #break up into 200 bins
   stat_smooth(method="lm", se=FALSE)+ #draw a linear regression line
-  labs(title = "Binned GDP vs Medals (1960-2016)",
+  labs(title = "Figure 1: Binned GDP vs Log of Medals (1960-2016)",
         x = "Average GDP (millions 2015 USD)",
-        y = "Log of Country's Total Medals Won")+
+        y = "Log of Total Medals")+
   annotate("text", x = 10000, y = 5.5, label = eq, size = 4, hjust = 0)+ #add the equation to the plot
   scale_x_continuous( #scale the x axis
     limits = c(0, 20000),
@@ -213,8 +231,14 @@ p1 <- ggplot(gdp_medals, aes(x = GDP, y = ltotal_medals))+
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.line = element_line(color = "black"),
-    plot.title = element_text(hjust = 0.5)
-  )
+    plot.title = element_text(hjust = 0.5, size=20),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12)
+    )
 
 p1
 
@@ -226,16 +250,18 @@ p1
 year_relationship <- gdp_medals %>%
   group_by(Year, Games)%>%
   summarise(
-  beta = coef(lm(ltotal_medals ~ GDP))[2], #record the coefficient
-  p_value = coef(summary(lm(ltotal_medals ~ GDP)))[4] #record the p-value
+  beta = coef(lm(ltotal_medals ~ GDP))[2]*100, #record the coefficient
+  p_value = coef(summary(lm(ltotal_medals ~ GDP)))[4], #record the p-value
+  lowerCI = confint(lm(ltotal_medals ~ GDP), level = 0.95)[2]*100,
+  upperCI = confint(lm(ltotal_medals ~ GDP), level = 0.95)[4]*100
   )%>%
   ungroup()
 
 
-#coef(summary(lm(ltotal_medals ~ GDP, data=gdp_medals)))[4]
-
-#turn the coefficient into a percent
-year_relationship$beta <- year_relationship$beta * 100
+# coef(summary(lm(ltotal_medals ~ GDP, data=gdp_medals)))
+# confint <- confint(lm(ltotal_medals ~ GDP, data=gdp_medals), level = 0.95)
+# confint[2] #lower
+# confint[4] #upper
 
 #add a variable that denotes what season the games was
 year_relationship$season <- ifelse(grepl(year_relationship$Games, pattern="Summer"), "Summer", "Winter")
@@ -243,13 +269,15 @@ year_relationship$season <- ifelse(grepl(year_relationship$Games, pattern="Summe
 #make a line plot that displays the effect of GDP over time
 #there will be two lines - one for summer games and one for winter games
 p2 <- ggplot(year_relationship, aes(x = Year, y = beta, color=season))+
-  geom_line(stat="identity")+
-  labs(title = "Figure 1: GDP Effect on Medals Won (Summer vs. Winter)",
+  geom_line(stat="identity", linewidth = 0.8)+
+  geom_point(alpha = 1)+
+  geom_errorbar(aes(ymin=lowerCI, ymax=upperCI), width=1, linewidth =0.5)+
+  labs(title = "Figure 2: Linear Regression Outcomes for Log of Medals vs. GDP (Summer vs. Winter)",
        x = "Olympics Year",
-       y = "Effect of GDP on Total Medals Won",
+       y = "Effect of GDP on Log of Total Medals (%)",
        color = "Olympics Type")+
   scale_x_continuous( #scale the x axis
-    limits= c(1960, 2016),
+    limits= c(1959.5, 2016.5),
     breaks = sort(unique(year_relationship$Year)))+
   theme_bw() +
 theme( #adjust the ggplot theme for readability/style
@@ -258,8 +286,13 @@ theme( #adjust the ggplot theme for readability/style
   panel.grid.major = element_blank(),
   panel.grid.minor = element_blank(),
   axis.line = element_line(color = "black"),
-  plot.title = element_text(hjust = 0.5),
-  axis.text.x = element_text(angle = 45, hjust = 1)
+  plot.title = element_text(hjust = 0.5, size = 20),
+  axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+  axis.title.x = element_text(size = 16),
+  axis.title.y = element_text(size = 16),
+  legend.title = element_text(size = 16),
+  legend.text = element_text(size = 14),
+  axis.text.y = element_text(size = 12)
 )
 
 p2
@@ -272,6 +305,7 @@ gdp_medals$season <- ifelse(grepl(gdp_medals$Games, pattern="Summer"), "Summer",
 
 
 ########## Summer Olympics Chart #############
+
 #Filter for only summer onlympics
 summer <- filter(gdp_medals, gdp_medals$season == "Summer")
 
@@ -299,13 +333,15 @@ top5_percent_summer <- top5_gdp_year_summer%>%
 #make a stacked bar chart of the top 5 GDP countries an their percent of medals won each year
 p_top5_summer <- ggplot(top5_percent_summer, aes(x = Year, y = percent_medals, fill = NOC)) +
   geom_bar(stat = "identity") +
-  labs(title = "Percent of Summer Olympic Medals Won by the Top 5 GDP Countries of that Year",
-       x = "Year",
-       y = "Percent of Total Medals",
+  geom_col(width=0.7)+
+  labs(title = "Figure 3: Percent of Summer Olympic Medals Won by Top 5 GDP Countries (1960-2016)",
+       x = "Olympics Year",
+       y = "Percent of Total Medals (%)",
        fill = "Countries") +
   scale_x_continuous(breaks = sort(unique(top5_percent_summer$Year)))+
   scale_y_continuous(breaks = seq(0, 100, by=5))+
-  annotate("text", x = 1980, y=17, label="Olympics Boycott", color="black", angle=90, hjust=0.5, size = 4)+
+  annotate("text", x = 1980, y=17, label="Western Boycott", color="black", angle=90, hjust=0.5, size = 8)+
+  annotate("text", x = 1984, y=17, label="USSR Boycott", color="black", angle=90, hjust=0.5, size = 8)+
   scale_fill_brewer(palette = "Paired")+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
   theme(
@@ -313,8 +349,15 @@ p_top5_summer <- ggplot(top5_percent_summer, aes(x = Year, y = percent_medals, f
     plot.background = element_blank(),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-    axis.line = element_line(color = "black")
-  )
+    axis.line = element_line(color = "black"),
+    plot.title = element_text(hjust = 0.5, size = 20),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) 
 
 p_top5_summer
 
@@ -346,9 +389,9 @@ top5_percent_winter <- top5_gdp_year_winter%>%
 #make a stacked bar chart of the top 5 GDP countries an their percent of medals won each year
 p_top5_winter <- ggplot(top5_percent_winter, aes(x = Year, y = percent_medals, fill = NOC)) +
   geom_bar(stat = "identity") +
-  labs(title = "Percent of Winter Olympic Medals Won by the Top 5 GDP Countries of that Year",
-       x = "Year",
-       y = "Percent of Total Medals",
+  labs(title = "Figure 4: Percent of Winter Olympic Medals Won by the Top 5 GDP Countries of that Year",
+       x = "Olympics Year",
+       y = "Percent of Total Medals (%)",
        fill = "Countries") +
   scale_x_continuous(breaks = sort(unique(top5_percent_winter$Year)))+
   scale_y_continuous(breaks = seq(0, 100, by=5))+
@@ -360,8 +403,15 @@ p_top5_winter <- ggplot(top5_percent_winter, aes(x = Year, y = percent_medals, f
     plot.background = element_blank(),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
-    axis.line = element_line(color = "black")
-  )
+    axis.line = element_line(color = "black"),
+    plot.title = element_text(hjust = 0.5, size = 20),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12)
+  ) 
 
 p_top5_winter
 
